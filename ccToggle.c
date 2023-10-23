@@ -24,16 +24,16 @@ typedef struct {
     // Ports
     const LV2_Atom_Sequence* in_port;
     LV2_Atom_Sequence*       out_port;
-    int* channel_ptr;
+    uint8_t* channel_ptr;
 
     // URIs
-    FifthsURIs uris;
+    CcToggleURIs uris;
 
-    int memCI[16][128]
-}Fifths;
+    uint8_t memCI[16][128]
+}CcToggle;
 
 static void connect_port(LV2_Handle instance, uint32_t port, void* data){
-    Fifths* self = (Fifths*)instance;
+    CcToggle* self = (CcToggle*)instance;
     
     switch (port){
     case MIDI_IN:
@@ -52,7 +52,7 @@ static LV2_Handle instantiate(const struct LV2_Descriptor* descriptor,
             const char*               path,
             const LV2_Feature* const* features){
     // Allocate and initialise instance structure.
-    Fifths* self = (Fifths*)calloc(1, sizeof(Fifths));
+    CcToggle* self = (CcToggle*)calloc(1, sizeof(CcToggle));
     if (!self) {
         return NULL;
     }
@@ -73,7 +73,7 @@ static LV2_Handle instantiate(const struct LV2_Descriptor* descriptor,
         return NULL;
     }
 
-    //map_fifths_uris(self->map, &self->uris);  // what?
+    map_cctoggle_uris(self->map, &self->uris);  // funtion in uris.h
 
     // TODO maybe this in activate (need to create function and call)
     // initialice the state of toggle normal off
@@ -92,17 +92,17 @@ static void cleanup(LV2_Handle instance){
 static void
 run(LV2_Handle instance, uint32_t sample_count)
 {
-  Fifths*     self = (Fifths*)instance;
-  FifthsURIs* uris = &self->uris;
+  CcToggle*     self = (CcToggle*)instance;
+  CcToggleURIs* uris = &self->uris;
+  uint8_t cnl;
 
-  // Struct for a 3 byte MIDI event, used for writing notes
+  // Struct for a 3 byte MIDI event, used for writing
   typedef struct {
     LV2_Atom_Event event;
     uint8_t        msg[3];
-  } MIDINoteEvent;
+  } MIDIEvent;
 
   // Initially self->out_port contains a Chunk with size set to capacity
-
   // Get the capacity
   const uint32_t out_capacity = self->out_port->atom.size;
 
@@ -114,23 +114,42 @@ run(LV2_Handle instance, uint32_t sample_count)
   LV2_ATOM_SEQUENCE_FOREACH (self->in_port, ev) {
     if (ev->body.type == uris->midi_Event) {
       const uint8_t* const msg = (const uint8_t*)(ev + 1);
-      switch (lv2_midi_message_type(msg)) {
-        case LV2_MIDI_MSG_CONTROLLER:
-          if(self->memCI[msg[*self->channel_ptr]][msg[2]]<64)
-            lv2_atom_sequence_append_event(self->out_port, out_capacity, 127);
-          else
-            lv2_atom_sequence_append_event(self->out_port, out_capacity, 0);
-          break;
-      default:
+      cnl = msg[0] % 16;
+      /*TODO TEST msg[0]%16
+        the first 4 bits of the status byte define the type (note on, note off, mono pressure,
+        poly pressure, programm change, pitch bend, control change), the last four (nnnn) the channel
+        maybe modulo divition by 16.
+        create a function to get channel from msg similar to lv2_midi_messagetype(msg)
+      */
+      if (lv2_midi_message_type(msg) == LV2_MIDI_MSG_CONTROLLER 
+          && msg[2] != self->memCI[*self->channel_ptr][msg[1]]
+          && ((*self->channel_ptr == 0) || (*self->channel_ptr == cnl))){
+          MIDIEvent new_msg;
+          new_msg.event.time.frames = ev->time.frames;
+          new_msg.event.body.type = ev->body.type;
+          new_msg.event.body.size = ev->body.size;
+
+          new_msg.msg[0] = msg[0];  // same status (CC+channel)
+          new_msg.msg[1] = msg[1];  // same controlnumber
+
+          if(self->memCI[msg[*self->channel_ptr]][msg[1]] < 64){
+            new_msg.msg[2] = 127;
+            self->memCI[msg[*self->channel_ptr]][msg[1]] = 127;
+          }
+          else{
+            new_msg.msg[2] = 0;
+            self->memCI[msg[*self->channel_ptr]][msg[1]] = 0;
+          }
+          lv2_atom_sequence_append_event(self->out_port, out_capacity, &new_msg.event);
+      }
+      else
         // Forward all other MIDI events directly
         lv2_atom_sequence_append_event(self->out_port, out_capacity, ev);
-        break;
-      }
     }
   }
 }
 
-static const void*
+static const void* 
 extension_data(const char* uri)
 {
   return NULL;
@@ -151,4 +170,3 @@ lv2_descriptor(uint32_t index)
 {
   return index == 0 ? &descriptor : NULL;
 }
-
