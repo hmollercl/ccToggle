@@ -122,7 +122,7 @@ run(LV2_Handle instance, uint32_t sample_count)
         create a function to get channel from msg similar to lv2_midi_messagetype(msg)
       */
       if (lv2_midi_message_type(msg) == LV2_MIDI_MSG_CONTROLLER 
-          && msg[2] != self->memCI[*self->channel_ptr][msg[1]]
+          //&& msg[2] != self->memCI[*self->channel_ptr][msg[1]]
           && ((*self->channel_ptr == 0) || (*self->channel_ptr == cnl))){
           MIDIEvent new_msg;
           new_msg.event.time.frames = ev->time.frames;
