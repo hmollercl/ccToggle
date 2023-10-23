@@ -29,8 +29,8 @@ typedef struct {
     // URIs
     CcToggleURIs uris;
 
-    uint8_t memCI[16][128]
-}CcToggle;
+    uint8_t memCI[16][128];
+} CcToggle;
 
 static void connect_port(LV2_Handle instance, uint32_t port, void* data){
     CcToggle* self = (CcToggle*)instance;
@@ -123,7 +123,8 @@ run(LV2_Handle instance, uint32_t sample_count)
       */
       if (lv2_midi_message_type(msg) == LV2_MIDI_MSG_CONTROLLER 
           //&& msg[2] != self->memCI[*self->channel_ptr][msg[1]]
-          && ((*self->channel_ptr == 0) || (*self->channel_ptr == cnl))){
+          && ((*self->channel_ptr == 0) || (*self->channel_ptr == cnl + 1))){
+          // cnl + 1 because low level channel 0 is high level 1.
           MIDIEvent new_msg;
           new_msg.event.time.frames = ev->time.frames;
           new_msg.event.body.type = ev->body.type;
