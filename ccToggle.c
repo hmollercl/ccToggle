@@ -42,6 +42,9 @@ static void connect_port(LV2_Handle instance, uint32_t port, void* data){
     case MIDI_OUT:
         self->out_port = (LV2_Atom_Sequence*)data;
         break;
+    case CHANNEL:
+        self->channel_ptr = (uint8_t*)data;
+        break;
     default:
         break;
     }
@@ -113,16 +116,15 @@ static void run(LV2_Handle instance, uint32_t sample_count){
     if (ev->body.type == uris->midi_Event) {
       //lv2_atom_sequence_append_event(self->out_port, out_capacity, ev);
       const uint8_t* const msg = (const uint8_t*)(ev + 1);
-      cnl = msg[0] % 16;
-      lv2_log_note(&self->logger, "Channel is %d\n", cnl);
+      cnl = (msg[0] % 16) + 1;  //get channel
       //TODO TEST msg[0]%16
       //the first 4 bits of the status byte define the type (note on, note off, mono pressure,
       //poly pressure, programm change, pitch bend, control change), the last four (nnnn) the channel
       //maybe modulo divition by 16.
       //create a function to get channel from msg similar to lv2_midi_messagetype(msg)
       
-      if (lv2_midi_message_type(msg) == LV2_MIDI_MSG_CONTROLLER 
-        /*&& ((*(self->channel_ptr) == 0) || (*(self->channel_ptr) == cnl+1))*/){
+      if ((lv2_midi_message_type(msg) == LV2_MIDI_MSG_CONTROLLER)
+        && (((*(self->channel_ptr) == 0) || (*(self->channel_ptr) == cnl)))){
         //TODO second line if is not working
 
         MIDIEvent new_msg;
@@ -133,13 +135,13 @@ static void run(LV2_Handle instance, uint32_t sample_count){
         new_msg.msg[0] = msg[0];  // same status (CC+channel)
         new_msg.msg[1] = msg[1];  // same controlnumber
         
-        if(self->memCI[cnl+1][msg[1]] < 64){
+        if(self->memCI[cnl][msg[1]] < 64){
           new_msg.msg[2] = 127;
-          self->memCI[cnl+1][msg[1]] = 127;
+          self->memCI[cnl][msg[1]] = 127;
         }
         else{
           new_msg.msg[2] = 0;
-          self->memCI[cnl+1][1] = 0;
+          self->memCI[cnl][msg[1]] = 0;
         }
       lv2_atom_sequence_append_event(self->out_port, out_capacity, &new_msg.event);
       //lv2_atom_sequence_append_event(self->out_port, out_capacity, ev);
