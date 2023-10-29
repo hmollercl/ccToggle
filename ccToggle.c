@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-enum { MIDI_IN = 0, MIDI_OUT = 1, CHANNEL = 2 };
+enum { MIDI_IN = 0, MIDI_OUT = 1, CHANNEL = 2 , MAX_CC = 3};
 
 typedef struct {
     // Features
@@ -25,6 +25,7 @@ typedef struct {
     const LV2_Atom_Sequence* in_port;
     LV2_Atom_Sequence*       out_port;
     uint8_t* channel_ptr;
+    uint8_t* max_cc;
 
     // URIs
     CcToggleURIs uris;
@@ -44,6 +45,9 @@ static void connect_port(LV2_Handle instance, uint32_t port, void* data){
         break;
     case CHANNEL:
         self->channel_ptr = (uint8_t*)data;
+        break;
+    case MAX_CC:
+        self->max_cc = (uint8_t*)data;
         break;
     default:
         break;
@@ -96,6 +100,7 @@ static void run(LV2_Handle instance, uint32_t sample_count){
   CcToggle*     self = (CcToggle*)instance;
   CcToggleURIs* uris = &self->uris;
   uint8_t cnl;
+  uint8_t cc;
 
   // Struct for a 3 byte MIDI event, used for writing
   typedef struct {
@@ -114,9 +119,9 @@ static void run(LV2_Handle instance, uint32_t sample_count){
   // Read incoming events
   LV2_ATOM_SEQUENCE_FOREACH (self->in_port, ev) {
     if (ev->body.type == uris->midi_Event) {
-      //lv2_atom_sequence_append_event(self->out_port, out_capacity, ev);
       const uint8_t* const msg = (const uint8_t*)(ev + 1);
       cnl = (msg[0] % 16) + 1;  //get channel
+      cc = floor(msg[0] / 16);  // get cc
       //TODO TEST msg[0]%16
       //the first 4 bits of the status byte define the type (note on, note off, mono pressure,
       //poly pressure, programm change, pitch bend, control change), the last four (nnnn) the channel
@@ -124,9 +129,8 @@ static void run(LV2_Handle instance, uint32_t sample_count){
       //create a function to get channel from msg similar to lv2_midi_messagetype(msg)
       
       if ((lv2_midi_message_type(msg) == LV2_MIDI_MSG_CONTROLLER)
-        && (((*(self->channel_ptr) == 0) || (*(self->channel_ptr) == cnl)))){
-        //TODO second line if is not working
-
+        && (((*(self->channel_ptr) == 0) || (*(self->channel_ptr) == cnl)))
+        && (cc <= *(self->max_cc))){
         MIDIEvent new_msg;
         new_msg.event.time.frames = ev->time.frames;
         new_msg.event.body.type = ev->body.type;
@@ -144,7 +148,6 @@ static void run(LV2_Handle instance, uint32_t sample_count){
           self->memCI[cnl][msg[1]] = 0;
         }
       lv2_atom_sequence_append_event(self->out_port, out_capacity, &new_msg.event);
-      //lv2_atom_sequence_append_event(self->out_port, out_capacity, ev);
       }
       else
         // Forward all other MIDI events directly
