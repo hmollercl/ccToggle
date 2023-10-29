@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 enum { MIDI_IN = 0, MIDI_OUT = 1, CHANNEL = 2 , MAX_CC = 3};
 
@@ -30,7 +31,7 @@ typedef struct {
     // URIs
     CcToggleURIs uris;
 
-    uint8_t memCI[16][128];
+    uint8_t memCI[16][128]; // for storing last message
 } CcToggle;
 
 static void connect_port(LV2_Handle instance, uint32_t port, void* data){
